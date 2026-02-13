@@ -1,4 +1,19 @@
 {
-  "seen_groot_skins": {},
-  "seen_update_urls": []
+  "seen_groot_skins": {
+    "mecha-flora bundle": {
+      "item": "Mecha-Flora Bundle",
+      "url": "https://www.marvelrivals.com/gameupdate/20260204/41548_1285429.html"
+    }
+  },
+  "seen_update_urls": [
+    "https://www.marvelrivals.com/gameupdate/20251217/41548_1277163.html",
+    "https://www.marvelrivals.com/gameupdate/20251224/41548_1278404.html",
+    "https://www.marvelrivals.com/gameupdate/20251230/41548_1279465.html",
+    "https://www.marvelrivals.com/gameupdate/20260106/41548_1280416.html",
+    "https://www.marvelrivals.com/gameupdate/20260114/41548_1281774.html",
+    "https://www.marvelrivals.com/gameupdate/20260121/41548_1282950.html",
+    "https://www.marvelrivals.com/gameupdate/20260127/41548_1284020.html",
+    "https://www.marvelrivals.com/gameupdate/20260204/41548_1285429.html",
+    "https://www.marvelrivals.com/gameupdate/20260211/41548_1286781.html"
+  ]
 }
