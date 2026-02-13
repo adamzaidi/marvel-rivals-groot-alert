@@ -18,8 +18,14 @@ STATE_PATH = Path("state.json")
 # Matches /gameupdate/YYYYMMDD/41548_1286781.html
 UPDATE_PATH_RE = re.compile(r"^/gameupdate/\d{8}/\d+_\d+\.html$")
 
-# Groot line variants: "-" or "–" or "—"
-GROOT_LINE_RE = re.compile(r"^\s*Groot\s*[-–—]\s*(.+?)\s*$", re.IGNORECASE)
+# Groot line variants:
+# - allows leading bullets/numbers/punctuation like:
+#   "• Groot - Skin", "- Groot - Skin", "1. Groot - Skin", "1) Groot - Skin"
+# - supports hyphen/en-dash/em-dash
+GROOT_LINE_RE = re.compile(
+    r"^\s*(?:[•\-\*\u2022]|\d+[.)])?\s*Groot\s*[-–—]\s*(.+?)\s*$",
+    re.IGNORECASE,
+)
 
 
 def load_state() -> Dict:
