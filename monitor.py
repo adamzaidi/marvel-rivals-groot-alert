@@ -15,8 +15,10 @@ BASE = "https://www.marvelrivals.com"
 INDEX_URL = "https://www.marvelrivals.com/gameupdate/"
 STATE_PATH = Path("state.json")
 
-# Matches /gameupdate/YYYYMMDD/41548_1286781.html
-UPDATE_PATH_RE = re.compile(r"^/gameupdate/\d{8}/\d+_\d+\.html$")
+# Matches:
+#   /gameupdate/YYYYMMDD/41548_1286781.html
+#   gameupdate/YYYYMMDD/41548_1286781.html
+UPDATE_PATH_RE = re.compile(r"^/?gameupdate/\d{8}/\d+_\d+\.html$", re.IGNORECASE)
 
 # Groot line variants:
 # - allows leading bullets/numbers/punctuation like:
@@ -26,6 +28,21 @@ GROOT_LINE_RE = re.compile(
     r"^\s*(?:[•\-\*\u2022]|\d+[.)])?\s*Groot\s*[-–—]\s*(.+?)\s*$",
     re.IGNORECASE,
 )
+
+# Option B: filter obvious non-skin items
+# (Per your request, "avatar" is NOT blacklisted.)
+NON_SKIN_KEYWORDS = {
+    "emoji",
+    "emote",
+    "spray",
+    "nameplate",
+    "sticker",
+    "voice",
+    "announcer",
+    "banner",
+    "frame",
+    "title",
+}
 
 
 def load_state() -> Dict:
@@ -49,24 +66,34 @@ def fetch(url: str) -> str:
 def extract_update_urls_from_index(html: str) -> List[str]:
     """
     Best-effort extraction:
-    - collect all <a href="/gameupdate/..."> links matching our known pattern
+    - collect <a href> links that look like update detail pages
+      (robust to missing leading slash, absolute URLs, query strings)
     - also scan raw HTML for occurrences (in case links are embedded in scripts)
     """
     soup = BeautifulSoup(html, "lxml")
-
     urls = set()
 
-    # 1) Normal anchors
+    # 1) Normal anchors (robust to absolute urls / missing leading slash / query strings)
     for a in soup.find_all("a", href=True):
         href = a["href"].strip()
-        if UPDATE_PATH_RE.match(href):
-            urls.add(urljoin(BASE, href))
 
-    # 2) Raw HTML scan fallback
-    for m in re.finditer(r'"/gameupdate/\d{8}/\d+_\d+\.html"', html):
-        path = m.group(0).strip('"')
-        if UPDATE_PATH_RE.match(path):
-            urls.add(urljoin(BASE, path))
+        # strip query/fragment
+        href = href.split("?", 1)[0].split("#", 1)[0]
+
+        # reduce absolute URL to path-like string for matching
+        href_path = href.replace("https://www.marvelrivals.com/", "").lstrip("/")
+
+        if UPDATE_PATH_RE.match(href_path):
+            urls.add(urljoin(BASE, "/" + href_path))
+
+    # 2) Raw HTML scan fallback (covers absolute urls and relative paths)
+    for m in re.finditer(
+        r"(https?://www\.marvelrivals\.com)?/?gameupdate/\d{8}/\d+_\d+\.html",
+        html,
+        re.IGNORECASE,
+    ):
+        path_or_url = m.group(0)
+        urls.add(urljoin(BASE, path_or_url))
 
     # Sort newest-ish first by date embedded in URL
     def key(u: str) -> str:
@@ -99,13 +126,6 @@ def get_text_lines(html: str) -> List[str]:
 def find_new_in_store_block(lines: List[str]) -> List[str]:
     """
     Find the "New In Store" section and return its lines until next section-ish boundary.
-
-    Many pages look markdown-ish in text extraction:
-      "## New In Store"
-      "Groot - <Skin>"
-      ...
-      "## Bug Fixes"
-    We'll treat lines that start with "## " as new section boundaries.
     """
     start_idx = None
     for i, line in enumerate(lines):
@@ -137,37 +157,45 @@ def find_new_in_store_block(lines: List[str]) -> List[str]:
     return block
 
 
+def _is_non_skin_item(name: str) -> bool:
+    lowered = name.lower()
+    return any(k in lowered for k in NON_SKIN_KEYWORDS)
+
+
 def parse_groot_skins(update_url: str) -> List[Tuple[str, str]]:
     """
-    Returns list of (skin_name, update_url) found in that update page.
+    Returns list of (item_name, update_url) found in that update page,
+    filtered to exclude obvious non-skin items (Option B).
     """
     html = fetch(update_url)
     lines = get_text_lines(html)
     store_block = find_new_in_store_block(lines)
-    found = []
+    found: List[Tuple[str, str]] = []
+
+    def maybe_add(line: str) -> None:
+        m = GROOT_LINE_RE.match(line)
+        if not m:
+            return
+        item = m.group(1).strip()
+        if not item:
+            return
+        if _is_non_skin_item(item):
+            return
+        found.append((item, update_url))
 
     # scan store block first
     for line in store_block:
-        m = GROOT_LINE_RE.match(line)
-        if m:
-            skin = m.group(1).strip()
-            if skin:
-                found.append((skin, update_url))
+        maybe_add(line)
 
     # backup: sometimes formatting might put Groot lines outside the extracted block
     if not found:
         for line in lines:
-            m = GROOT_LINE_RE.match(line)
-            if m:
-                skin = m.group(1).strip()
-                if skin:
-                    found.append((skin, update_url))
+            maybe_add(line)
 
     # de-dupe within page
-    uniq = {}
-    for skin, url in found:
-        key = skin.lower()
-        uniq[key] = (skin, url)
+    uniq: Dict[str, Tuple[str, str]] = {}
+    for item, url in found:
+        uniq[item.lower()] = (item, url)
     return list(uniq.values())
 
 
@@ -194,7 +222,7 @@ def send_email(subject: str, body: str) -> None:
 def main() -> int:
     state = load_state()
     seen_urls = set(state.get("seen_update_urls", []))
-    seen_skins = state.get("seen_groot_skins", {})  # key: lower skin name -> metadata
+    seen_skins = state.get("seen_groot_skins", {})  # key: lower item name -> metadata
 
     index_html = fetch(INDEX_URL)
     update_urls = extract_update_urls_from_index(index_html)
@@ -202,19 +230,19 @@ def main() -> int:
     # Only process URLs we have not seen before
     new_update_urls = [u for u in update_urls if u not in seen_urls]
 
-    notifications = []
+    notifications: List[Tuple[str, str]] = []
     for url in new_update_urls:
         try:
-            skins = parse_groot_skins(url)
+            items = parse_groot_skins(url)
         except Exception as e:
             print(f"[WARN] Failed to parse {url}: {e}")
             continue
 
-        for skin, src_url in skins:
-            k = skin.lower()
+        for item, src_url in items:
+            k = item.lower()
             if k not in seen_skins:
-                notifications.append((skin, src_url))
-                seen_skins[k] = {"skin": skin, "url": src_url}
+                notifications.append((item, src_url))
+                seen_skins[k] = {"item": item, "url": src_url}
 
         # Mark URL as seen regardless (so we don’t re-parse endlessly)
         seen_urls.add(url)
@@ -224,17 +252,28 @@ def main() -> int:
     state["seen_groot_skins"] = seen_skins
     save_state(state)
 
-    # Send notifications (one email per run, can include multiple skins)
+    # Send notifications (one email per run, can include multiple items)
     if notifications:
         lines = []
-        for skin, url in notifications:
-            lines.append(f"- Groot - {skin}\n  {url}")
-        body = "New Groot skin(s) found in Marvel Rivals updates:\n\n" + "\n".join(lines)
-        subject = f"Marvel Rivals: New Groot skin ({len(notifications)})"
+        for item, url in notifications:
+            # Include the URL in the email for verification (your request)
+            lines.append(f"- Groot - {item}\n  Source: {url}")
+
+        body = "New Groot item(s) found in Marvel Rivals updates:\n\n" + "\n".join(lines)
+
+        # Option A subject formatting:
+        # - 1 item: include item name
+        # - many: show count
+        if len(notifications) == 1:
+            item_name, _ = notifications[0]
+            subject = f"Marvel Rivals: Groot - {item_name}"
+        else:
+            subject = f"Marvel Rivals: {len(notifications)} New Groot Items"
+
         send_email(subject, body)
-        print(f"[INFO] Sent email for {len(notifications)} new skin(s).")
+        print(f"[INFO] Sent email for {len(notifications)} new item(s).")
     else:
-        print("[INFO] No new Groot skins.")
+        print("[INFO] No new Groot items.")
 
     return 0
 
