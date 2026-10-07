@@ -19,9 +19,11 @@ Official patch notes are the right source for the store. They are also a poor so
 
 [rivals.gs](https://rivals.gs/about/) rebuilds heroes, costumes, and battle passes from the game's data tables after each patch. Each Groot costume page has a **How to get it** section. Pass costumes say which season and tier they come from, for example "Tier 10 of the S10 battle pass". No API key is required. The monitor reads `https://rivals.gs/heroes/groot/`, skips anything listed on `https://rivals.gs/unreleased/`, and skips costumes whose **Available from** date is still in the future.
 
+You do not need a MarvelRivalsAPI key. This job never calls `marvelrivalsapi.com`. As of 7 Oct 2026 that host returns Cloudflare 502 for the homepage, the dashboard at `/dashboard/settings`, and `/api/v1/heroes`. The docs site still loads, which is why key signup looks documented and then fails. rivals.gs answered 200 on the same check.
+
 Other options that were considered:
 
-- **MarvelRivalsAPI** (`/api/v1/battlepass`) returns structured pass items, but every request needs an `x-api-key`, and the published item objects do not name the hero. That is an extra secret and an extra matching problem for a single-hero alert.
+- **MarvelRivalsAPI** (`/api/v1/battlepass`) documents structured pass items, but the app and API are unreachable (502), every request would need an `x-api-key`, and the published item objects do not name the hero.
 - **Official notes alone** stay in the job for store, event, Twitch, rank, and college wording (`Groot - Skin name`). They cannot list a pass skin the notes never mention.
 - **Fandom and Liquipedia** describe costumes, but availability is hand-edited and easier to lag or scrape-block than the game-file extract.
 
