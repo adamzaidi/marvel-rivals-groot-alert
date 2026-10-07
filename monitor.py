@@ -130,6 +130,16 @@ AVAILABLE_FROM_RE = re.compile(
 
 FetchFn = Callable[[str], str]
 
+PARSER_ALERT_SUBJECT = "Marvel Rivals monitor: rivals.gs HTML needs a fix"
+
+
+class CatalogStructureError(Exception):
+    """rivals.gs returned a page, but it no longer matches the parser."""
+
+    def __init__(self, message: str, skins: Optional[List[Dict]] = None):
+        super().__init__(message)
+        self.skins = skins or []
+
 
 def load_state() -> Dict:
     if not STATE_PATH.exists():
@@ -518,16 +528,40 @@ def _costume_paths(html: str, pattern: re.Pattern) -> List[str]:
     return paths
 
 
+def costume_page_problems(html: str) -> List[str]:
+    """
+    Landmarks the catalog parser requires. A store costume with these sections
+    is healthy even though it does not alert.
+    """
+    soup = BeautifulSoup(html, "lxml")
+    problems = []
+    heading = soup.find("h1")
+    name = heading.get_text(" ", strip=True) if heading else ""
+    if not _clean_skin_name(name):
+        problems.append("missing costume name (h1)")
+    if not _section_text(soup, "how to get it"):
+        problems.append("missing 'How to get it' section")
+    if not _section_text(soup, "details"):
+        problems.append("missing Details section")
+    return problems
+
+
 def collect_catalog_skins(fetch_fn: FetchFn, today: Optional[date] = None) -> List[Dict]:
     """
     Non-store Groot costumes from the rivals.gs hero catalog.
     Future-dated and /unreleased costumes are left for a later run.
+
+    Raises CatalogStructureError when the HTML loads but no longer has the
+    costume links or page sections this parser reads. HTTP failures stay
+    warnings so a one-day outage retries on the next run.
     """
     hero_html = fetch_fn(HERO_CATALOG_URL)
     paths = _costume_paths(hero_html, GROOT_COSTUME_PATH_RE)
     if not paths:
-        print("[WARN] rivals.gs hero page listed no Groot costumes.")
-        return []
+        raise CatalogStructureError(
+            f"{HERO_CATALOG_URL} returned no /costumes/groot-*-costume/ links. "
+            "The hero page HTML changed, or the response was a bot wall."
+        )
 
     unreleased = set()
     try:
@@ -537,6 +571,7 @@ def collect_catalog_skins(fetch_fn: FetchFn, today: Optional[date] = None) -> Li
         print(f"[WARN] Failed to read rivals.gs unreleased list: {e}")
 
     found: List[Dict] = []
+    broken: List[str] = []
     for path in paths:
         if path in unreleased:
             print(f"[INFO] Skipping unreleased Groot costume path {path}.")
@@ -547,10 +582,33 @@ def collect_catalog_skins(fetch_fn: FetchFn, today: Optional[date] = None) -> Li
         except Exception as e:
             print(f"[WARN] Failed to read {url}: {e}")
             continue
+        problems = costume_page_problems(html)
+        if problems:
+            broken.append(f"{url} ({'; '.join(problems)})")
+            continue
         skin = parse_costume_html(html, url, today=today)
         if skin:
             found.append(skin)
-    return _dedupe_skins(found)
+    skins = _dedupe_skins(found)
+    if broken:
+        raise CatalogStructureError(
+            "rivals.gs costume HTML no longer matches the parser:\n" + "\n".join(broken),
+            skins=skins,
+        )
+    return skins
+
+
+def build_parser_alert(message: str) -> tuple:
+    body = (
+        "The Groot monitor loaded rivals.gs, but the HTML no longer matches what monitor.py parses. "
+        "Season-pass skins on the broken pages were not checked. "
+        "Store alerts from official patch notes in this run still went out.\n\n"
+        f"{message}\n\n"
+        "Update the catalog parser in monitor.py, then re-run the Groot Skin Monitor workflow. "
+        "This email repeats on each run until the pages match again. "
+        "A timeout or HTTP error is different: those stay in the log and retry the next day."
+    )
+    return PARSER_ALERT_SUBJECT, body
 
 
 def build_email(notifications: List[Dict]) -> tuple:
@@ -627,8 +685,13 @@ def main() -> int:
         # Mark URL as seen regardless (so we don’t re-parse endlessly)
         seen_urls.add(url)
 
+    catalog_error = None
     try:
         catalog = collect_catalog_skins(fetch)
+    except CatalogStructureError as e:
+        catalog = e.skins
+        catalog_error = str(e)
+        print(f"[ERROR] {e}")
     except Exception as e:
         catalog = []
         print(f"[WARN] Failed to read rivals.gs catalog: {e}")
@@ -641,17 +704,32 @@ def main() -> int:
     state["seen_groot_skins"] = seen_skins
     save_state(state)
 
+    exit_code = 0
+
     # Send notifications (one email per run, can include multiple items)
     if notifications:
         subject, body = build_email(notifications)
-        send_email(subject, body)
-        print(f"[INFO] Sent email for {len(notifications)} new item(s).")
-        for skin in notifications:
-            print(f"[INFO] {skin['source']}: Groot - {skin['name']}")
+        try:
+            send_email(subject, body)
+            print(f"[INFO] Sent email for {len(notifications)} new item(s).")
+            for skin in notifications:
+                print(f"[INFO] {skin['source']}: Groot - {skin['name']}")
+        except Exception as e:
+            exit_code = 1
+            print(f"[ERROR] Failed to send skin alert: {e}")
     else:
         print("[INFO] No new Groot items.")
 
-    return 0
+    if catalog_error:
+        exit_code = 1
+        subject, body = build_parser_alert(catalog_error)
+        try:
+            send_email(subject, body)
+            print("[ERROR] Sent rivals.gs parser alert.")
+        except Exception as e:
+            print(f"[ERROR] Failed to send rivals.gs parser alert: {e}")
+
+    return exit_code
 
 
 if __name__ == "__main__":

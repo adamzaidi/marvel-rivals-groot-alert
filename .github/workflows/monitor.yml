@@ -29,6 +29,7 @@ jobs:
         run: python -m unittest discover -s tests -v
 
       - name: Run monitor
+        id: monitor
         env:
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
@@ -40,6 +41,7 @@ jobs:
           python monitor.py
 
       - name: Commit updated state.json
+        if: success() || steps.monitor.outcome == 'failure'
         run: |
           if git diff --quiet; then
             echo "No state changes."
@@ -50,3 +52,9 @@ jobs:
           git add state.json
           git commit -m "chore: update monitor state"
           git push
+
+      - name: Fail when rivals.gs HTML no longer matches
+        if: steps.monitor.outcome == 'failure'
+        run: |
+          echo "The monitor exited 1. rivals.gs HTML likely changed. Check the alert email and the log above."
+          exit 1

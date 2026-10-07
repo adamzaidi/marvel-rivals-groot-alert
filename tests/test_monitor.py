@@ -293,6 +293,42 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(labeled, {"Grootlactus": "season pass", "Lantern Limb": "event"})
         self.assertNotIn("https://rivals.gs/costumes/groot-future-bark-costume/", fetched)
 
+    def test_hero_page_without_costume_links_is_a_parser_failure(self):
+        def fake_fetch(url):
+            if url == monitor.HERO_CATALOG_URL:
+                return "<html><body><h1>Groot</h1><p>Costumes moved.</p></body></html>"
+            raise AssertionError(url)
+
+        with self.assertRaises(monitor.CatalogStructureError) as caught:
+            monitor.collect_catalog_skins(fake_fetch, today=date(2026, 10, 7))
+        self.assertIn("no /costumes/groot-", str(caught.exception))
+
+    def test_redesigned_costume_page_is_a_parser_failure_and_keeps_healthy_skins(self):
+        broken = "https://rivals.gs/costumes/groot-mecha-flora-costume/"
+        pages = {
+            monitor.HERO_CATALOG_URL: """
+                <html><body>
+                <a href="/costumes/groot-grootlactus-costume/">Grootlactus</a>
+                <a href="/costumes/groot-mecha-flora-costume/">Mecha-Flora</a>
+                </body></html>
+            """,
+            monitor.UNRELEASED_URL: "<html></html>",
+            "https://rivals.gs/costumes/groot-grootlactus-costume/": SEASON_PASS_COSTUME_HTML,
+            broken: "<html><body><div>New layout</div></body></html>",
+        }
+
+        def fake_fetch(url):
+            return pages[url]
+
+        with self.assertRaises(monitor.CatalogStructureError) as caught:
+            monitor.collect_catalog_skins(fake_fetch, today=date(2026, 10, 7))
+        self.assertIn(broken, str(caught.exception))
+        self.assertIn("missing costume name", str(caught.exception))
+        self.assertEqual(
+            [skin["name"] for skin in caught.exception.skins],
+            ["Grootlactus"],
+        )
+
 
 class EmailAndMainTests(unittest.TestCase):
     def test_email_labels_source(self):
@@ -419,6 +455,51 @@ class EmailAndMainTests(unittest.TestCase):
         self.assertEqual(len(sent), 1)
         self.assertIn("Mecha-Flora Bundle [store]", sent[0][0])
         self.assertIn(new_update, sent[0][1])
+
+    def test_html_mismatch_emails_and_fails_without_dropping_the_store_alert(self):
+        new_update = "https://www.marvelrivals.com/gameupdate/20261007/41548_9999999.html"
+        pages = {
+            monitor.INDEX_URL: INDEX_HTML,
+            new_update: STORE_UPDATE_HTML,
+            monitor.HERO_CATALOG_URL: "<html><body><p>No costume links</p></body></html>",
+        }
+        sent = []
+
+        def fake_fetch(url):
+            if url not in pages:
+                raise AssertionError(url)
+            return pages[url]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            state_path = Path(tmp) / "state.json"
+            original_path = monitor.STATE_PATH
+            original_fetch = monitor.fetch
+            original_send = monitor.send_email
+            monitor.STATE_PATH = state_path
+            monitor.fetch = fake_fetch
+            monitor.send_email = lambda subject, body: sent.append((subject, body))
+            try:
+                self.assertEqual(monitor.main(), 1)
+                first_run = list(sent)
+                saved = state_path.read_text(encoding="utf-8")
+                self.assertIn("mecha-flora", saved)
+                sent.clear()
+                self.assertEqual(monitor.main(), 1)
+                second_run = list(sent)
+            finally:
+                monitor.STATE_PATH = original_path
+                monitor.fetch = original_fetch
+                monitor.send_email = original_send
+
+        self.assertEqual(
+            [subject for subject, _body in first_run],
+            [
+                "Marvel Rivals: Groot - Mecha-Flora Bundle [store]",
+                monitor.PARSER_ALERT_SUBJECT,
+            ],
+        )
+        self.assertIn("no /costumes/groot-", first_run[1][1])
+        self.assertEqual([subject for subject, _body in second_run], [monitor.PARSER_ALERT_SUBJECT])
 
 
 class IndexTests(unittest.TestCase):

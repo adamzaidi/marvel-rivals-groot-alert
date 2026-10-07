@@ -61,5 +61,6 @@ python -m unittest discover -s tests -v
 
 - A pass costume alerts once rivals.gs has extracted it and its available-from date has arrived. Marketing posts that preview a skin before it is in the game files will not alert.
 - Patch notes that are already listed in `seen_update_urls` are not downloaded again. A newly recognized event phrase in an old note will not be replayed; the catalog backfill covers pass skins and file-unlocks with no store price.
-- If rivals.gs is down, store alerts from new patch notes still send. Pass detection retries on the next run.
+- If rivals.gs is down (timeout or HTTP error), that is a warning in the log and the run still exits 0. Pass detection retries the next day. Store alerts from new patch notes still send.
+- If rivals.gs returns a page that no longer has Groot costume links, or a costume page is missing its name, **How to get it** section, or **Details** section, the run emails `Marvel Rivals monitor: rivals.gs HTML needs a fix` and exits 1. The GitHub Action turns red after `state.json` is committed, so the same skin is not alerted twice while the parser is broken. The failure email repeats until the HTML matches `monitor.py` again.
 - Non-skin items whose names happen to avoid the keyword list can still alert. Avatar items are intentionally not filtered.
