@@ -1,8 +1,29 @@
 {
   "seen_groot_skins": {
-    "mecha-flora bundle": {
+    "big buddy": {
+      "item": "Big Buddy",
+      "source": "season pass",
+      "url": "https://rivals.gs/costumes/groot-big-buddy-costume/"
+    },
+    "grootlactus": {
+      "item": "Grootlactus",
+      "source": "season pass",
+      "url": "https://rivals.gs/costumes/groot-grootlactus-costume/"
+    },
+    "ironwood serpent": {
+      "item": "Ironwood Serpent",
+      "source": "other",
+      "url": "https://rivals.gs/costumes/groot-ironwood-serpent-costume/"
+    },
+    "mecha-flora": {
       "item": "Mecha-Flora Bundle",
+      "source": "store",
       "url": "https://www.marvelrivals.com/gameupdate/20260204/41548_1285429.html"
+    },
+    "symbiote flora": {
+      "item": "Symbiote Flora",
+      "source": "season pass",
+      "url": "https://rivals.gs/costumes/groot-symbiote-flora-costume/"
     }
   },
   "seen_update_urls": [
@@ -46,6 +67,7 @@
     "https://www.marvelrivals.com/gameupdate/20260909/41548_1313441.html",
     "https://www.marvelrivals.com/gameupdate/20260916/41548_1314013.html",
     "https://www.marvelrivals.com/gameupdate/20260923/41548_1314808.html",
-    "https://www.marvelrivals.com/gameupdate/20260930/41548_1315568.html"
+    "https://www.marvelrivals.com/gameupdate/20260930/41548_1315568.html",
+    "https://www.marvelrivals.com/gameupdate/20261006/41548_1315865.html"
   ]
 }
