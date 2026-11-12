@@ -24,6 +24,11 @@
       "item": "Symbiote Flora",
       "source": "season pass",
       "url": "https://rivals.gs/costumes/groot-symbiote-flora-costume/"
+    },
+    "yggroot": {
+      "item": "Yggroot",
+      "source": "college perk",
+      "url": "https://www.marvelrivals.com/gameupdate/20261111/41548_1319332.html"
     }
   },
   "seen_update_urls": [
@@ -72,6 +77,7 @@
     "https://www.marvelrivals.com/gameupdate/20261014/41548_1316588.html",
     "https://www.marvelrivals.com/gameupdate/20261021/41548_1317253.html",
     "https://www.marvelrivals.com/gameupdate/20261028/41548_1317925.html",
-    "https://www.marvelrivals.com/gameupdate/20261104/41548_1318632.html"
+    "https://www.marvelrivals.com/gameupdate/20261104/41548_1318632.html",
+    "https://www.marvelrivals.com/gameupdate/20261111/41548_1319332.html"
   ]
 }
